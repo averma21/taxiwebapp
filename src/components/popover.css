@@ -1,0 +1,19 @@
+.popover-custom {
+  position: absolute;
+  background-color: #28b9a2;
+  padding: 10px;
+  color: white;
+}
+
+.dot {
+  height: 10px;
+  width: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.popover-custom .heading {
+  font-weight: 600;
+  display: inline-block;
+  margin: 5px;
+}

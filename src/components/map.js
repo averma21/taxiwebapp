@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from "react";
 import "./map.css";
 import Constants from "../Constants";
+import Popover from "./popover";
+import MainMenu from "./mainmenu";
 
 function Map() {
   const canvas = useRef();
   const isMountedRef = useRef(null);
 
   const [map, setMap] = useState({});
+  const [popoverPos, setPopoverPos] = useState({
+    style: { left: -1, top: -1, display: "none" }
+  });
+  const [vertexConverionMap, setVertexConversionMap] = useState({});
 
   let addedResizeHandler = false;
   const MIN_LAT = -90;
@@ -14,7 +20,6 @@ function Map() {
   const MIN_LON = -180;
   const MAX_LON = 180;
   const VERTEX_RADIUS = 5;
-  let vertexConverionMap = {};
   const fetchMap = async () => {
     const fetchMap = await fetch(`${Constants.MAP_URL}`);
 
@@ -23,6 +28,13 @@ function Map() {
       setMap(map); // Map doesn't change immediately. Need to register another useEffect which listens on changes in map.
     }
   };
+
+  // Called whenever there is change in map
+  useEffect(() => {
+    drawEdges();
+    drawVertices();
+    //requestAnimationFrame(draw); // todo : should this be used?
+  }, [vertexConverionMap]);
 
   // Called whenever there is change in map
   useEffect(() => {
@@ -56,14 +68,11 @@ function Map() {
     }
     fix_dpi();
     convertCoordinates();
-    drawEdges();
-    drawVertices();
-    //requestAnimationFrame(draw); // todo : should this be used?
   }
 
   function convertCoordinates() {
     const vertices = map.vertices;
-    vertexConverionMap = {};
+    const vMap = {};
     for (var i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
       const currentCanvas = canvas.current;
@@ -83,12 +92,13 @@ function Map() {
       const y =
         style_height -
         ((vertex.latitude - MIN_LAT) * style_height) / (MAX_LAT - MIN_LAT);
-      vertexConverionMap[vertex.id] = {
+      vMap[vertex.id] = {
         x: x,
         y: y
       };
       //console.log("Added for " + vertex.id);
     }
+    setVertexConversionMap(vMap);
   }
 
   function drawEdges() {
@@ -105,9 +115,8 @@ function Map() {
       ctx.beginPath();
       ctx.moveTo(v1.x, v1.y);
       ctx.lineTo(v2.x, v2.y);
-
       ctx.lineWidth = 5;
-      ctx.strokeStyle = "#28B9A2";
+      ctx.strokeStyle = Constants.EDGE_COLOR;
       ctx.stroke();
     }
   }
@@ -123,13 +132,23 @@ function Map() {
 
   function drawVertices() {
     const vertices = map.vertices;
+    if (!vertices) {
+      return;
+    }
     const currentCanvas = canvas.current;
     const ctx = currentCanvas.getContext("2d");
     for (var i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
       const x = vertexConverionMap[vertex.id].x;
       const y = vertexConverionMap[vertex.id].y;
-      drawVertex(ctx, x, y, VERTEX_RADIUS, "#c82124", "#c82124");
+      drawVertex(
+        ctx,
+        x,
+        y,
+        VERTEX_RADIUS,
+        Constants.VERTEX_PRIMARY_COLOR,
+        Constants.VERTEX_PRIMARY_COLOR
+      );
     }
   }
 
@@ -165,38 +184,79 @@ function Map() {
       return;
     }
     const ctx = canvas.current.getContext("2d");
-    let found1, found2;
+    let found1, found2, foundEdge;
     for (var i = 0; i < edges.length; i++) {
       const v1 = vertexConverionMap[edges[i].v1.id];
       const v2 = vertexConverionMap[edges[i].v2.id];
       var distance = distOfPoint(v1, v2, pos.x, pos.y);
       if (distance < 5 && !isOutside(v1, v2, pos.x, pos.y)) {
+        foundEdge = edges[i];
         found1 = v1;
         found2 = v2;
       } else {
-        drawVertex(ctx, v1.x, v1.y, VERTEX_RADIUS, "#c82124", "#c82124");
-        drawVertex(ctx, v2.x, v2.y, VERTEX_RADIUS, "#c82124", "#c82124");
+        drawVertex(
+          ctx,
+          v1.x,
+          v1.y,
+          VERTEX_RADIUS,
+          Constants.VERTEX_PRIMARY_COLOR,
+          Constants.VERTEX_PRIMARY_COLOR
+        );
+        drawVertex(
+          ctx,
+          v2.x,
+          v2.y,
+          VERTEX_RADIUS,
+          Constants.VERTEX_PRIMARY_COLOR,
+          Constants.VERTEX_PRIMARY_COLOR
+        );
       }
     }
     if (found1 && found2) {
-      let color = "#000000";
-      console.log("Calling for " + found1.x + "," + found1.y);
-      drawVertex(ctx, found1.x, found1.y, VERTEX_RADIUS, color, color);
-      console.log("Calling for " + found2.x + "," + found2.y);
-      drawVertex(ctx, found2.x, found2.y, VERTEX_RADIUS, color, color);
+      let toColor = foundEdge.bidirectional
+        ? Constants.VERTEX_FROM_COLOR
+        : Constants.VERTEX_TO_COLOR;
+      //console.log("Calling for " + found1.x + "," + found1.y);
+      drawVertex(
+        ctx,
+        found1.x,
+        found1.y,
+        VERTEX_RADIUS,
+        Constants.VERTEX_FROM_COLOR,
+        Constants.VERTEX_FROM_COLOR
+      );
+      //console.log("Calling for " + found2.x + "," + found2.y);
+      drawVertex(ctx, found2.x, found2.y, VERTEX_RADIUS, toColor, toColor);
+      setPopoverPos({
+        style: {
+          left: evt.clientX + 10,
+          top: evt.clientY + 10,
+          display: "block"
+        },
+        edge: foundEdge
+      });
+    } else {
+      setPopoverPos({
+        style: { left: evt.clientX, top: evt.clientY, display: "none" }
+      });
     }
   }
 
   useEffect(() => {
+    console.log("useEffect called");
     isMountedRef.current = true;
     fetchMap();
     return () => (isMountedRef.current = false);
   }, []);
 
   return (
-    <canvas ref={canvas} onMouseMove={_onMouseMove}>
-      Your browser does not support the canvas element.
-    </canvas>
+    <React.Fragment>
+      <canvas ref={canvas} onMouseMove={_onMouseMove}>
+        Your browser does not support the canvas element.
+      </canvas>
+      <Popover position={popoverPos}></Popover>
+      <MainMenu></MainMenu>
+    </React.Fragment>
   );
 }
 
