@@ -14,11 +14,11 @@ function Popover(props) {
   function getVertexInfo(vertex) {
     return (
       <React.Fragment>
+        <span className="heading">name</span>: {vertex.name}
+        <br></br>
         <span className="heading">lat</span>: {vertex.latitude}
         <br></br>
         <span className="heading">lon</span>: {vertex.longitude}
-        <br></br>
-        <span className="heading">id</span>: {vertex.id}
       </React.Fragment>
     );
   }

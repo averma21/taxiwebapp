@@ -6,6 +6,8 @@ import helper from "./helpers";
 
 function MainMenu(props) {
   const mainMenu = useRef();
+  const fromVertex = useRef();
+  const toVertex = useRef();
   const [mmStyle, setMmStyle] = useState({});
   let pos1 = 0,
     pos2 = 0,
@@ -52,9 +54,20 @@ function MainMenu(props) {
   function subscribe(regNo) {
     const eventSource = new EventSource(Constants.CAB_URL + "/" + regNo);
     eventSource.onmessage = e => {
-      const msg = e.data;
+      const msg = JSON.parse(e.data);
       console.log("recved -");
       console.log(msg);
+      if (msg.tripended == true) {
+        console.log("Trip ended. Closing connection");
+        eventSource.close();
+        setTimeout(function() {
+          props.updateCabs([]);
+        }, 3000);
+      } else {
+        const cabs = [];
+        cabs.push(msg);
+        props.updateCabs(cabs);
+      }
     };
     eventSource.onopen = e => console.log("open");
     eventSource.onerror = e => {
@@ -73,14 +86,15 @@ function MainMenu(props) {
     );
   }
 
-  const bookCab = function() {
+  const bookCab = function(v1, v2) {
     const csrfToken = helper.obtainCSRFToken();
     let formData = new FormData();
     formData.append("_csrf", csrfToken);
-    formData.append("a", 2);
+    formData.append("v1", v1);
+    formData.append("v2", v2);
     $.ajax({
       method: "POST",
-      url: Constants.CAB_URL,
+      url: Constants.CAB_URL + "/assign",
       data: formData,
       contentType: false,
       processData: false,
@@ -96,7 +110,18 @@ function MainMenu(props) {
 
   function startNavigation(e) {
     e.preventDefault();
-    bookCab();
+    let v1, v2;
+    for (let i = 0; i < props.vertices.length; i++) {
+      let vertex = props.vertices[i];
+      if (vertex.name == fromVertex.current.value) {
+        v1 = vertex.id;
+      } else if (vertex.name == toVertex.current.value) {
+        v2 = vertex.id;
+      }
+    }
+    // console.log(v1);
+    // console.log(v2);
+    bookCab(v1, v2);
   }
 
   return (
@@ -110,11 +135,21 @@ function MainMenu(props) {
       <form>
         <div className="form-group">
           <label htmlFor="fromID">From</label>
-          <input type="text" className="form-control" id="fromID" />
+          <input
+            type="text"
+            className="form-control"
+            ref={fromVertex}
+            id="fromID"
+          />
         </div>
         <div className="form-group">
           <label htmlFor="toID">To</label>
-          <input type="password" className="form-control" id="toID" />
+          <input
+            type="text"
+            className="form-control"
+            ref={toVertex}
+            id="toID"
+          />
         </div>
         <button
           type="submit"

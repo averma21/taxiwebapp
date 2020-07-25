@@ -9,6 +9,7 @@ function Map() {
   const isMountedRef = useRef(null);
 
   const [map, setMap] = useState({});
+  const [cabs, setCabs] = useState([]);
   const [popoverPos, setPopoverPos] = useState({
     style: { left: -1, top: -1, display: "none" }
   });
@@ -20,19 +21,30 @@ function Map() {
   const MIN_LON = -180;
   const MAX_LON = 180;
   const VERTEX_RADIUS = 5;
+  const CAB_RADIUS = 10;
+
   const fetchMap = async () => {
     const fetchMap = await fetch(`${Constants.MAP_URL}`);
 
     const map = await fetchMap.json();
     if (isMountedRef.current) {
+      console.log(map.vertices);
       setMap(map); // Map doesn't change immediately. Need to register another useEffect which listens on changes in map.
     }
   };
+
+  useEffect(() => {
+    console.log("useEffect called");
+    isMountedRef.current = true;
+    fetchMap();
+    return () => (isMountedRef.current = false);
+  }, []);
 
   // Called whenever there is change in map
   useEffect(() => {
     drawEdges();
     drawVertices();
+    drawCabs();
     //requestAnimationFrame(draw); // todo : should this be used?
   }, [vertexConverionMap]);
 
@@ -46,7 +58,17 @@ function Map() {
       });
       addedResizeHandler = true;
     }
-  }, [map]);
+  }, [map, cabs]);
+
+  function draw() {
+    // console.log("draw called");
+    const vertices = map.vertices;
+    if (!vertices) {
+      return;
+    }
+    fix_dpi();
+    convertCoordinates();
+  }
 
   function fix_dpi() {
     const currentCanvas = canvas.current;
@@ -60,32 +82,22 @@ function Map() {
     currentCanvas.setAttribute("height", document.body.clientHeight - 5); //document.height is obsolete
   }
 
-  function draw() {
-    // console.log("draw called");
-    const vertices = map.vertices;
-    if (!vertices) {
-      return;
-    }
-    fix_dpi();
-    convertCoordinates();
-  }
-
   function convertCoordinates() {
     const vertices = map.vertices;
     const vMap = {};
+    const boundary = 6 * VERTEX_RADIUS;
+    const currentCanvas = canvas.current;
+    let style_height =
+      +getComputedStyle(currentCanvas)
+        .getPropertyValue("height")
+        .slice(0, -2) - boundary;
+    //get CSS width
+    let style_width =
+      +getComputedStyle(currentCanvas)
+        .getPropertyValue("width")
+        .slice(0, -2) - boundary;
     for (var i = 0; i < vertices.length; i++) {
       const vertex = vertices[i];
-      const currentCanvas = canvas.current;
-      const boundary = 6 * VERTEX_RADIUS;
-      let style_height =
-        +getComputedStyle(currentCanvas)
-          .getPropertyValue("height")
-          .slice(0, -2) - boundary;
-      //get CSS width
-      let style_width =
-        +getComputedStyle(currentCanvas)
-          .getPropertyValue("width")
-          .slice(0, -2) - boundary;
       const x =
         2 * VERTEX_RADIUS +
         ((vertex.longitude - MIN_LON) * style_width) / (MAX_LON - MIN_LON);
@@ -93,6 +105,20 @@ function Map() {
         style_height -
         ((vertex.latitude - MIN_LAT) * style_height) / (MAX_LAT - MIN_LAT);
       vMap[vertex.id] = {
+        x: x,
+        y: y
+      };
+      //console.log("Added for " + vertex.id);
+    }
+    for (var i = 0; i < cabs.length; i++) {
+      const cab = cabs[i];
+      const x =
+        CAB_RADIUS +
+        ((cab.longitude - MIN_LON) * style_width) / (MAX_LON - MIN_LON);
+      const y =
+        style_height -
+        ((cab.latitude - MIN_LAT) * style_height) / (MAX_LAT - MIN_LAT);
+      vMap[cab.regNo] = {
         x: x,
         y: y
       };
@@ -150,6 +176,20 @@ function Map() {
         Constants.VERTEX_PRIMARY_COLOR
       );
     }
+  }
+
+  function drawCabs() {
+    const currentCanvas = canvas.current;
+    const ctx = currentCanvas.getContext("2d");
+    for (var i = 0; i < cabs.length; i++) {
+      const x = vertexConverionMap[cabs[i].regNo].x;
+      const y = vertexConverionMap[cabs[i].regNo].y;
+      drawVertex(ctx, x, y, CAB_RADIUS, "#000080", "#00BFFF");
+    }
+  }
+
+  function updateCabs(cabs) {
+    setCabs(cabs);
   }
 
   // calculate the point on the line that's
@@ -242,20 +282,13 @@ function Map() {
     }
   }
 
-  useEffect(() => {
-    console.log("useEffect called");
-    isMountedRef.current = true;
-    fetchMap();
-    return () => (isMountedRef.current = false);
-  }, []);
-
   return (
     <React.Fragment>
       <canvas ref={canvas} onMouseMove={_onMouseMove}>
         Your browser does not support the canvas element.
       </canvas>
       <Popover position={popoverPos}></Popover>
-      <MainMenu></MainMenu>
+      <MainMenu vertices={map.vertices} updateCabs={updateCabs}></MainMenu>
     </React.Fragment>
   );
 }
